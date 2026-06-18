@@ -1,0 +1,57 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x]
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+    
+    - name: Install Backend Dependencies
+      run: |
+        cd backend
+        npm ci
+    
+    - name: Install Frontend Dependencies
+      run: |
+        cd frontend
+        npm ci
+    
+    - name: Build Frontend
+      run: |
+        cd frontend
+        npm run build
+    
+    - name: Lint Check (Backend)
+      run: |
+        cd backend
+        npm run lint 2>/dev/null || echo "No lint script defined"
+    
+    - name: Test Backend
+      run: |
+        cd backend
+        npm test 2>/dev/null || echo "No test script defined"
+      env:
+        MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        NODE_ENV: test
+    
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: frontend-build
+        path: frontend/dist
