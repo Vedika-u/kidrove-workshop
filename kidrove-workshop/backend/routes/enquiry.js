@@ -1,6 +1,6 @@
 import express from 'express';
-import Enquiry from '../models/Enquiry.js';
 import validateEnquiry from '../middleware/validation.js';
+import { addEnquiry, emailExists, getAllEnquiries } from '../storage.js';
 
 const router = express.Router();
 
@@ -8,26 +8,16 @@ router.post('/', validateEnquiry, async (req, res) => {
   try {
     const { name, email, phone } = req.body;
 
-    // Check MongoDB connection
-    if (require('mongoose').connection.readyState !== 1) {
-      return res.status(503).json({
-        success: false,
-        message: 'Database connection error. Please try again later.',
-      });
-    }
-
-    // Check if email already exists with timeout
-    const existingEnquiry = await Enquiry.findOne({ email }).maxTimeMS(5000);
-    if (existingEnquiry) {
+    // Check if email already exists
+    if (emailExists(email)) {
       return res.status(400).json({
         success: false,
         message: 'This email has already been registered',
       });
     }
 
-    // Create new enquiry
-    const enquiry = new Enquiry({ name, email, phone });
-    await enquiry.save();
+    // Add new enquiry to local storage
+    const enquiry = addEnquiry({ name, email, phone });
 
     res.status(201).json({
       success: true,
@@ -36,15 +26,6 @@ router.post('/', validateEnquiry, async (req, res) => {
     });
   } catch (error) {
     console.error('Registration error:', error.message);
-    
-    // Handle timeout errors specifically
-    if (error.message.includes('buffering timed out') || error.message.includes('timeout')) {
-      return res.status(503).json({
-        success: false,
-        message: 'Database is temporarily unavailable. Please try again in a moment.',
-      });
-    }
-    
     res.status(500).json({
       success: false,
       message: error.message || 'Server error during registration',
@@ -55,15 +36,7 @@ router.post('/', validateEnquiry, async (req, res) => {
 // Optional: Get all enquiries (for admin dashboard)
 router.get('/', async (req, res) => {
   try {
-    // Check MongoDB connection
-    if (require('mongoose').connection.readyState !== 1) {
-      return res.status(503).json({
-        success: false,
-        message: 'Database connection error. Please try again later.',
-      });
-    }
-
-    const enquiries = await Enquiry.find().sort({ createdAt: -1 }).maxTimeMS(5000);
+    const enquiries = getAllEnquiries();
     res.status(200).json({
       success: true,
       count: enquiries.length,
@@ -71,14 +44,6 @@ router.get('/', async (req, res) => {
     });
   } catch (error) {
     console.error('Fetch enquiries error:', error.message);
-    
-    if (error.message.includes('buffering timed out') || error.message.includes('timeout')) {
-      return res.status(503).json({
-        success: false,
-        message: 'Database is temporarily unavailable. Please try again in a moment.',
-      });
-    }
-
     res.status(500).json({
       success: false,
       message: error.message || 'Server error fetching enquiries',
